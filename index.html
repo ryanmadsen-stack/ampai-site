@@ -185,23 +185,37 @@
   <h2>Request a pilot spot</h2>
   <p class="lede center">Tell us about your shop, and Ryan will reach out about a pilot spot.</p>
 </div>
-<form class="pilot-form" action="https://formsubmit.co/ryanmadsen@ampai.tech" method="POST">
-  <input type="hidden" name="_subject" value="New AmpAI pilot request">
-  <input type="hidden" name="_template" value="table">
-  <input type="hidden" name="_next" value="https://ampai.tech/thanks.html">
-  <div class="hp" aria-hidden="true"><label>Leave this empty <input type="text" name="_honey" tabindex="-1" autocomplete="off"></label></div>
+<!-- Pilot requests go to the "AmpAI pilot request" Google Form in the ampai.tech Workspace (answers + email alerts there). -->
+<form class="pilot-form" id="pilot-form" action="https://docs.google.com/forms/d/e/1FAIpQLSfQYFebbmkBPBYHCBRkn1uRqajLwOS2i4ZaiVg7ivZDc2ovMw/formResponse" method="POST">
   <div class="row">
-    <label>Your name <span class="req" aria-hidden="true">*</span><input type="text" name="name" autocomplete="name" required></label>
-    <label>Company name <span class="req" aria-hidden="true">*</span><input type="text" name="company" autocomplete="organization" required></label>
+    <label>Your name <span class="req" aria-hidden="true">*</span><input type="text" name="entry.475285590" autocomplete="name" required></label>
+    <label>Company name <span class="req" aria-hidden="true">*</span><input type="text" name="entry.1944698886" autocomplete="organization" required></label>
   </div>
   <div class="row">
-    <label>Email <span class="req" aria-hidden="true">*</span><input type="email" name="email" autocomplete="email" required></label>
-    <label>Phone<input type="tel" name="phone" autocomplete="tel"></label>
+    <label>Email <span class="req" aria-hidden="true">*</span><input type="email" name="entry.1429657091" autocomplete="email" required></label>
+    <label>Phone<input type="tel" name="entry.406826713" autocomplete="tel"></label>
   </div>
-  <label>Tell us about your work<span>Residential, multifamily or commercial? How many people on your crew? How do you bid jobs today?</span><textarea name="about_your_work"></textarea></label>
+  <label>Tell us about your work<span>Residential, multifamily or commercial? How many people on your crew? How do you bid jobs today?</span><textarea name="entry.407828688"></textarea></label>
   <button type="submit">Request a pilot spot</button>
   <p class="fine">* Required. Your details go only to the AmpAI team.</p>
 </form>
+<iframe name="pilot-sink" title="Form submission" hidden></iframe>
+<script>
+// Send the form to Google in a hidden frame, then show AmpAI's own thank-you page.
+// Without JavaScript the form still posts and Google shows its own confirmation.
+(function () {
+  var form = document.getElementById("pilot-form");
+  var sink = document.querySelector("iframe[name=pilot-sink]");
+  var sent = false;
+  form.target = "pilot-sink";
+  form.addEventListener("submit", function () {
+    sent = true;
+    var b = form.querySelector("button");
+    b.disabled = true; b.textContent = "Sending…";
+  });
+  sink.addEventListener("load", function () { if (sent) window.location.href = "thanks.html"; });
+})();
+</script>
 </section>
 
 <section class="amp-band dark">
