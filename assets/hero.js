@@ -1,9 +1,12 @@
-// AmpAI hero: Ryan's S02 print, scanned flat, then tilted into 3D while each circuit traces out
-// from the panel with its wires lifted off the sheet. Data: Ryan's own S02 markup (window.S02).
+// AmpAI hero: Ryan's S02 print is scanned flat, then tips into 3D and gets roughed in like a real job.
+// Device dots sit on the print's own symbols. Each circuit leaves the panel, rises into the ceiling,
+// runs square along the joists to each box in the order Ryan wired it, and drops down to the device.
+// Data: Ryan's own S02 markup, 2026-10-14 (window.S02: marks + wires).
 (function () {
   var stage = document.getElementById("hero-stage");
   if (!stage || !window.S02) return;
   var D = window.S02, W = D.w, H = D.h, NS = "http://www.w3.org/2000/svg";
+  var CEIL = 70; // ceiling height above the print, in sheet pixels
 
   // Circuit order, colour and breaker (breakers from Ryan's S02 answer key).
   var CIRCUITS = [
@@ -23,20 +26,17 @@
   var color = {}, order = {};
   CIRCUITS.forEach(function (c, i) { color[c[0]] = c[1]; order[c[0]] = i; });
 
-  var pos = {}, panel = null;
-  D.marks.forEach(function (m) {
-    if (m.kind === "panel") { panel = m; pos.P = m; } else pos[m.n] = m;
-  });
+  var pos = {};
+  D.marks.forEach(function (m) { pos[m.kind === "panel" ? "P" : m.n] = m; });
+  var P = pos.P;
 
-  // Order each circuit's wires outward from the panel (breadth-first), so they trace like a pull.
+  // Order each circuit's wires outward from the panel (breadth-first): the order an electrician pulls them.
   var byCircuit = {};
   D.wires.forEach(function (w) { (byCircuit[w.circuit] = byCircuit[w.circuit] || []).push(w); });
   var segs = [];
   Object.keys(byCircuit).forEach(function (name) {
     var ws = byCircuit[name], adj = {};
-    ws.forEach(function (w, i) {
-      [w.from, w.to].forEach(function (k) { (adj[k] = adj[k] || []).push(i); });
-    });
+    ws.forEach(function (w, i) { [w.from, w.to].forEach(function (k) { (adj[k] = adj[k] || []).push(i); }); });
     var depth = {}, used = {}, queue = [];
     var start = adj.P ? "P" : String(ws[0].from);
     depth[start] = 0; queue.push(start);
@@ -53,6 +53,23 @@
     ws.forEach(function (w, i) { if (!used[i]) segs.push({ c: name, a: w.from, b: w.to, d: 0 }); });
   });
 
+  // Ceiling route between two boxes: square runs, home runs bundled out of the panel in their own lanes.
+  function route(s) {
+    var A = pos[s.a], B = pos[s.b];
+    if (String(s.a) === "P") {
+      // home runs leave the top of the panel side by side, each in its own lane
+      var k = order[s.c] - 5.5, y0 = P.y + k * 2.5, xl = P.x - 30 + k * 4.5;
+      return [[A.x, y0], [xl, y0], [xl, B.y], [B.x, B.y]];
+    }
+    if (Math.abs(B.x - A.x) >= Math.abs(B.y - A.y)) return [[A.x, A.y], [B.x, A.y], [B.x, B.y]];
+    return [[A.x, A.y], [A.x, B.y], [B.x, B.y]];
+  }
+  function plen(pts) {
+    var L = 0;
+    for (var i = 1; i < pts.length; i++) L += Math.abs(pts[i][0] - pts[i - 1][0]) + Math.abs(pts[i][1] - pts[i - 1][1]);
+    return L;
+  }
+
   // Build the scene.
   stage.innerHTML = "";
   var scene = el("div", "scene");
@@ -62,59 +79,68 @@
   sheet.src = "assets/s02.png"; sheet.alt = ""; sheet.className = "sheet"; sheet.width = W; sheet.height = H;
   board.appendChild(sheet);
 
-  var shadow = svg("shadow"), lifted = svg("lifted");
-  var pins = el("div", "pins"), rings = svg("rings"), labels = el("div", "labels");
+  var floor = svg("floor"), ceiling = svg("ceiling");
+  var drops = el("div", "drops"), labels = el("div", "labels");
   var scan = el("div", "scan");
+  ceiling.style.setProperty("--ceil", CEIL + "px");
 
-  var T0 = 3.6, PER = 0.62, STEP = 0.14; // seconds: tracing starts, gap between circuits, per depth level
+  var T0 = 3.7, PER = 0.6, STEP = 0.22; // when roughing starts, gap between circuits, per box along a circuit
+  var reach = {}; // when each box gets its wire
   var lastEnd = 0;
   segs.forEach(function (s) {
-    var A = pos[s.a], B = pos[s.b];
-    if (!A || !B) return;
-    var len = Math.hypot(B.x - A.x, B.y - A.y);
+    if (!pos[s.a] || !pos[s.b]) return;
+    var pts = route(s), L = plen(pts);
     var delay = T0 + order[s.c] * PER + s.d * STEP;
-    lastEnd = Math.max(lastEnd, delay + 0.5);
-    [shadow, lifted].forEach(function (layer) {
-      var p = document.createElementNS(NS, "line");
-      p.setAttribute("x1", A.x); p.setAttribute("y1", A.y); p.setAttribute("x2", B.x); p.setAttribute("y2", B.y);
+    var dur = Math.min(0.55, 0.18 + L / 900);
+    reach[s.b] = Math.min(reach[s.b] || 99, delay + dur);
+    if (String(s.a) === "P") reach.P = Math.min(reach.P || 99, delay);
+    lastEnd = Math.max(lastEnd, delay + dur + 0.3);
+    var d = "M" + pts.map(function (p) { return p[0] + " " + p[1]; }).join(" L");
+    // shadow of the run on the print, and the run itself up in the ceiling
+    [[floor, "run-shadow"], [ceiling, "run"]].forEach(function (t) {
+      var p = document.createElementNS(NS, "path");
+      p.setAttribute("d", d); p.setAttribute("class", t[1]);
       p.setAttribute("stroke", color[s.c] || "#e8892b");
-      p.style.strokeDasharray = len; p.style.strokeDashoffset = len;
-      p.style.setProperty("--len", len);
-      p.style.animationDelay = delay + "s";
-      layer.appendChild(p);
+      p.style.strokeDasharray = L; p.style.strokeDashoffset = L;
+      p.style.animationDelay = delay + "s"; p.style.animationDuration = dur + "s";
+      t[0].appendChild(p);
     });
   });
 
+  // Boxes on the print: a ring that the scan lights up, then a solid dot once its wire arrives,
+  // with a drop from the ceiling down to it.
   D.marks.forEach(function (m) {
     var isPanel = m.kind === "panel";
+    var key = isPanel ? "P" : m.n;
     var c = isPanel ? "#12151b" : color[m.circuit] || "#e8892b";
-    var reveal = 0.25 + (m.y / H) * 2.0; // the scan line passes over it
-    var lit = isPanel ? T0 - 0.3 : T0 + (order[m.circuit] || 0) * PER + 0.15;
-    var r = document.createElementNS(NS, "circle");
-    r.setAttribute("cx", m.x); r.setAttribute("cy", m.y); r.setAttribute("r", isPanel ? 13 : 11);
-    r.setAttribute("class", "ring");
-    r.style.animationDelay = reveal + "s";
-    rings.appendChild(r);
+    var seen = 0.25 + (m.y / H) * 2.0; // the scan line passes over it
+    var lit = reach[key] || T0;
 
-    var pin = el("i", "pin" + (isPanel ? " pin-p" : ""));
-    pin.style.left = m.x + "px"; pin.style.top = m.y + "px";
-    pin.style.setProperty("--c", c);
-    pin.style.animationDelay = lit + "s";
-    pins.appendChild(pin);
+    var ring = document.createElementNS(NS, "circle");
+    ring.setAttribute("cx", m.x); ring.setAttribute("cy", m.y); ring.setAttribute("r", isPanel ? 15 : 12);
+    ring.setAttribute("class", "ring"); ring.style.animationDelay = seen + "s";
+    floor.appendChild(ring);
 
     var dot = document.createElementNS(NS, isPanel ? "rect" : "circle");
     if (isPanel) {
-      dot.setAttribute("x", m.x - 12); dot.setAttribute("y", m.y - 12);
-      dot.setAttribute("width", 24); dot.setAttribute("height", 24); dot.setAttribute("rx", 4);
+      dot.setAttribute("x", m.x - 9); dot.setAttribute("y", m.y - 16); dot.setAttribute("width", 18); dot.setAttribute("height", 32); dot.setAttribute("rx", 3);
     } else {
-      dot.setAttribute("cx", m.x); dot.setAttribute("cy", m.y); dot.setAttribute("r", 7.5);
+      dot.setAttribute("cx", m.x); dot.setAttribute("cy", m.y); dot.setAttribute("r", 6.5);
     }
     dot.setAttribute("fill", c); dot.setAttribute("class", "node");
-    dot.style.animationDelay = lit + "s";
-    lifted.appendChild(dot);
+    dot.style.animationDelay = (isPanel ? T0 - 0.4 : lit) + "s";
+    floor.appendChild(dot);
+
+    var drop = el("i", "drop" + (isPanel ? " drop-p" : ""));
+    drop.style.left = m.x + "px"; drop.style.top = m.y + "px";
+    drop.style.setProperty("--c", c); drop.style.setProperty("--ceil", CEIL + "px");
+    var bar = el("b", "");
+    bar.style.animationDelay = (isPanel ? T0 - 0.2 : lit - 0.12) + "s";
+    drop.appendChild(bar);
+    drops.appendChild(drop);
   });
 
-  // A few circuit tags that face the camera, at the circuit's first device.
+  // A few circuit tags that face the camera, above a box on the circuit.
   [["Living", 25], ["Bed", 33], ["Kitchen 1", 4], ["Range", 11]].forEach(function (t) {
     var m = pos[t[1]];
     if (!m) return;
@@ -122,20 +148,19 @@
     var tag = el("span", "tag");
     tag.innerHTML = '<b style="background:' + info[1] + '"></b>' + info[0] + " <em>" + info[2] + "</em>";
     tag.style.left = m.x + "px"; tag.style.top = m.y + "px";
-    tag.style.animationDelay = (T0 + order[t[0]] * PER + 0.9) + "s";
+    tag.style.animationDelay = ((reach[t[1]] || T0) + 0.5) + "s";
     labels.appendChild(tag);
   });
 
-  board.appendChild(rings);
-  board.appendChild(shadow);
-  board.appendChild(pins);
-  board.appendChild(lifted);
+  board.appendChild(floor);
+  board.appendChild(drops);
+  board.appendChild(ceiling);
   board.appendChild(labels);
   board.appendChild(scan);
   scene.appendChild(board);
   stage.appendChild(scene);
 
-  // Legend: circuits appear as they're drawn.
+  // Legend: circuits appear as they're pulled.
   var legend = el("ol", "legend");
   CIRCUITS.forEach(function (c, i) {
     var li = el("li", "");
@@ -146,16 +171,14 @@
   var hud = el("div", "hud");
   hud.innerHTML =
     '<div class="hud-top"><span class="rec"></span><span class="hud-status">' +
-    '<span class="s1">Reading the print</span><span class="s2">Drawing circuits</span><span class="s3">Ready for your check</span>' +
+    '<span class="s1">Reading the print</span><span class="s2">Roughing in circuits</span><span class="s3">Ready for your check</span>' +
     '</span><span class="hud-sheet">S02 &middot; 1/4" = 1\'-0"</span></div>';
   stage.appendChild(hud);
   stage.appendChild(legend);
 
   var total = lastEnd + 4.5;
-  stage.style.setProperty("--total", total + "s");
 
   function fit() {
-    // Scale the board so the tilted sheet fills the stage.
     var w = scene.clientWidth, h = scene.clientHeight;
     // Footprint of the sheet turned 28 degrees and tipped back 54 degrees (about 1333 x 760 at scale 1).
     var s = Math.min(w / 1333 * (w < 500 ? 1.35 : 1.08), h / 820);
@@ -166,7 +189,7 @@
   window.addEventListener("resize", fit);
 
   var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduce) { stage.classList.add("done"); return; }
+  if (reduce) { stage.classList.add("done"); stage.setAttribute("data-phase", "3"); return; }
 
   scan.style.setProperty("--h", H + "px");
   var timers = [], running = false;
@@ -177,8 +200,7 @@
     stage.setAttribute("data-phase", "1");
     void stage.offsetWidth; // restart CSS animations
     stage.classList.add("play");
-    later(function () { stage.classList.add("tilt"); }, 2600);
-    later(function () { stage.setAttribute("data-phase", "2"); }, 2600);
+    later(function () { stage.classList.add("tilt"); stage.setAttribute("data-phase", "2"); }, 2600);
     later(function () { stage.setAttribute("data-phase", "3"); }, lastEnd * 1000);
     later(function () { if (running) play(); }, total * 1000 + 2500);
   }
