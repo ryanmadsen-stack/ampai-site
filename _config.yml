@@ -1,0 +1,6 @@
+# GitHub Pages build settings for ampai.tech.
+# Publish the .well-known folder (text-and-data-mining reservation); keep the README off the live site.
+include:
+  - .well-known
+exclude:
+  - README.md

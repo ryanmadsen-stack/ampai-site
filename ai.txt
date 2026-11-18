@@ -1,0 +1,6 @@
+# ai.txt for ampai.tech
+# No AI training, dataset building, scraping, copying, cloning or reverse engineering of any part of this site:
+# text, images, design, layout, code (HTML, CSS, JavaScript) or data. All rights reserved, AmpAI.
+
+User-Agent: *
+Disallow: /
